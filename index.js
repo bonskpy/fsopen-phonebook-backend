@@ -1,6 +1,5 @@
 const express = require("express");
 const morgan = require("morgan");
-// const cors = require("cors");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -49,10 +48,8 @@ app.use(
     ":method :url :status :res[content-length] - :response-time ms - :request-payload ",
   ),
 );
-// app.use(cors());
 app.use(express.json());
-app.use(express.static("distt"));
-// app.use(requestLogger);
+app.use(express.static("dist"));
 
 app.get("/api/info", (req, res) => {
   const requestTime = new Date(Date.now()).toUTCString();
@@ -122,3 +119,4 @@ app.listen(
   PORT,
   () => console.log(`Server online: http://localhost:3001/api/persons`),
 );
+
