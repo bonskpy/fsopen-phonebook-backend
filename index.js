@@ -119,4 +119,3 @@ app.listen(
   PORT,
   () => console.log(`Server online: http://localhost:3001/api/persons`),
 );
-
