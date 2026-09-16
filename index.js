@@ -1,39 +1,10 @@
 const express = require("express");
 const morgan = require("morgan");
+const Person = require("./modules/person");
+const { default: mongoose } = require("mongoose");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-
-let persons = [
-  {
-    "id": "1",
-    "name": "Arto Hellas",
-    "number": "040-123456",
-  },
-  {
-    "id": "2",
-    "name": "Ada Lovelace",
-    "number": "39-44-5323523",
-  },
-  {
-    "id": "3",
-    "name": "Dan Abramov",
-    "number": "12-43-234345",
-  },
-  {
-    "id": "4",
-    "name": "Mary Poppendieck",
-    "number": "39-23-6423122",
-  },
-];
-
-// const requestLogger = (request, response, next) => {
-//   console.log("Method:", request.method);
-//   console.log("Path:", request.path);
-//   console.log("Body:", request.body);
-//   console.log("---");
-//   next(); // required so that request does not hang
-// };
 
 const unknownEndpointLogger = (request, response, next) => {
   console.log("Unknown endpoint error");
@@ -41,52 +12,71 @@ const unknownEndpointLogger = (request, response, next) => {
   next();
 };
 
+const errorHandler = (error, request, response, next) => {
+  console.log(error.message);
+
+  if (error.name === "CastError") {
+    return response.status(400).send({ error: "malformed id" });
+  }
+
+  next(error);
+};
+
 morgan.token("request-payload", (req, res) => JSON.stringify(req.body));
 
+app.use(express.json());
+app.use(express.static("dist"));
 app.use(
   morgan(
     ":method :url :status :res[content-length] - :response-time ms - :request-payload ",
+    { skip: (req, res) => req.originalUrl.startsWith("/.well-known/") },
   ),
 );
-app.use(express.json());
-app.use(express.static("dist"));
 
 app.get("/api/info", (req, res) => {
   const requestTime = new Date(Date.now()).toUTCString();
-  res.send(
-    `<h2>Number of entries: ${persons.length}</h2>
+  Person.countDocuments({}).then((count) => {
+    res.send(
+      `<h2>Number of entries: ${count}</h2>
          <p>${requestTime}</p>`,
-  );
+    );
+  });
 });
 
-app.get("/api/persons", (req, res) => {
-  res.json(persons);
+app.get("/api/persons", (req, res, next) => {
+  Person.find({})
+    .then((allPersons) => {
+      res.json(allPersons);
+    })
+    .catch((err) => next(err));
 });
 
-app.get("/api/persons/:id", (req, res) => {
-  const id = req.params.id;
-  const person = persons.find((person) => person.id === id);
+app.get("/api/persons/:id", (req, res, next) => {
+  const entryId = req.params.id;
 
-  if (!person) {
-    return res.status(404).end();
-  }
-
-  res.send(
-    `<p>${person.id} : ${person.name} :  ${person.number}</p>`,
-  );
+  Person.findById(entryId)
+    .then((person) => {
+      if (person) {
+        res.json(person);
+      } else {
+        return res.status(404).end();
+      }
+    })
+    .catch((err) => next(err));
 });
 
-app.delete("/api/persons/:id", (req, res) => {
-  const id = req.params.id;
-  persons = persons.filter((person) => person.id !== id);
-
-  res.status(204).end();
+app.delete("/api/persons/:id", (req, res, next) => {
+  const entryId = req.params.id;
+  Person.findByIdAndDelete(entryId)
+    .then((result) => {
+      res.status(204).end();
+    })
+    .catch((error) => next(error));
 });
 
 app.post("/api/persons", (req, res) => {
   const body = req.body;
-
-  const newName = body.name;
+  console.log(body)
 
   if (!(body.name && body.number)) {
     return res.status(400).json({
@@ -94,28 +84,27 @@ app.post("/api/persons", (req, res) => {
     });
   }
 
-  const isKnown = persons.find((person) =>
-    person.name.toLowerCase() === newName.toLowerCase()
-  );
+  const newPerson = new Person({ name: body.name, number: body.number });
 
-  if (isKnown) {
-    return res.status(400).json({ error: "Name has to be uniqe." });
-  }
+  // const isKnown = persons.find((person) =>
+  //   person.name.toLowerCase() === newName.toLowerCase()
+  // );
 
-  const entry = {
-    id: String(Math.floor(Math.random() * 100000)),
-    name: body.name,
-    number: body.number,
-  };
+  // if (isKnown) {
+  //   return res.status(400).json({ error: "Name has to be uniqe." });
+  // }
 
-  persons = persons.concat(entry);
-
-  res.status(201).json(entry);
+  newPerson
+    .save()
+    .then((result) => {
+      res.status(201).json(result);
+    })
+    .catch((err) => {
+      console.log("error saving new entry:", err);
+    });
 });
 
-app.use(unknownEndpointLogger);
+app.listen(PORT, () => console.log(`server online`));
 
-app.listen(
-  PORT,
-  () => console.log(`Server online: http://localhost:3001/api/persons`),
-);
+app.use(unknownEndpointLogger);
+app.use(errorHandler);
